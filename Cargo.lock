@@ -145,7 +145,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "esp32c3-aht20-nostd"
+name = "esp32c3-aht20"
 version = "0.1.0"
 dependencies = [
  "aht20",

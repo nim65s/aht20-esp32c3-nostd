@@ -1,11 +1,11 @@
 [package]
-name = "aht20-esp32c3-nostd"
+name = "esp32c3-aht20"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aht20 = { git = "https://github.com/nim65s/aht20" }
+esp32c3-hal = { git = "https://github.com/esp-rs/esp-hal" }
 nb = "1.0.0"
 panic-halt = "0.2.0"
 riscv-rt = "0.8.1"
-aht20 = { git = "https://github.com/nim65s/aht20" }
-esp32c3-hal = { git = "https://github.com/esp-rs/esp-hal" }
