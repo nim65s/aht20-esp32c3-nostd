@@ -3,7 +3,10 @@
 
 use core::fmt::Write;
 
-use esp32c3_hal::{gpio::IO, i2c::*, pac::Peripherals, prelude::*, Delay, RtcCntl, Serial, Timer};
+use esp32c3_hal::{
+    clock::ClockControl, gpio::IO, i2c::*, peripherals::Peripherals, prelude::*, timer::TimerGroup,
+    Delay, Rtc, Uart,
+};
 use nb::block;
 use panic_halt as _;
 use riscv_rt::entry;
@@ -12,20 +15,25 @@ use aht20::Aht20;
 
 #[entry]
 fn main() -> ! {
-    let mut peripherals = Peripherals::take().unwrap();
+    let peripherals = Peripherals::take();
+    let mut system = peripherals.SYSTEM.split();
+    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-    let mut rtc_cntl = RtcCntl::new(peripherals.RTC_CNTL);
-    let mut serial0 = Serial::new(peripherals.UART0).unwrap();
-    let mut timer0 = Timer::new(peripherals.TIMG0);
-    let mut timer1 = Timer::new(peripherals.TIMG1);
+    let mut rtc = Rtc::new(peripherals.RTC_CNTL);
+    let mut uart0 = Uart::new(peripherals.UART0);
+    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    let mut timer0 = timer_group0.timer0;
+    let mut wdt0 = timer_group0.wdt;
+    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
+    let mut wdt1 = timer_group1.wdt;
 
     // Disable watchdog timers
-    rtc_cntl.set_super_wdt_enable(false);
-    rtc_cntl.set_wdt_enable(false);
-    timer0.disable();
-    timer1.disable();
+    rtc.swd.disable();
+    rtc.rwdt.disable();
+    wdt0.disable();
+    wdt1.disable();
 
-    writeln!(serial0, "hello !").unwrap();
+    writeln!(uart0, "hello !").unwrap();
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
     // Create a new peripheral object with the described wiring
@@ -34,28 +42,28 @@ fn main() -> ! {
         peripherals.I2C0,
         io.pins.gpio1,
         io.pins.gpio2,
-        100_000,
-        &mut peripherals.SYSTEM,
-    )
-    .unwrap();
+        100u32.kHz(),
+        &mut system.peripheral_clock_control,
+        &clocks,
+    );
 
-    let delay = Delay::new(peripherals.SYSTIMER);
+    let delay = Delay::new(&clocks);
     match Aht20::new(i2c, delay) {
         Err(e) => {
-            writeln!(serial0, "error: {:?}", e).unwrap();
+            writeln!(uart0, "error: {:?}", e).unwrap();
             loop {
                 block!(timer0.wait()).unwrap();
             }
         }
         Ok(mut dev) => {
             // Start timer (1 min interval)
-            timer0.start(600_000_000u64);
+            timer0.start(60u64.secs());
 
             loop {
                 let (h, t) = dev.read().unwrap();
 
                 writeln!(
-                    serial0,
+                    uart0,
                     "relative humidity={}%; temperature={}C",
                     h.rh(),
                     t.celsius()
